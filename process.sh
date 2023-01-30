@@ -13,11 +13,12 @@ shopt -s nullglob
 
 usage() {
     cat << EOT 1>&2
-Usage: process.sh [-h] [-d] [-f] [-p pfx] [-t type] -s w:h -o fn video ...
+Usage: process.sh [-h] [-d] [-f] [-n] [-p pfx] [-t type] -s w:h -o fn video ...
 
 -d           output debug information
 -f           overwrite output file if it already exists
 -h           show help
+-n           don't wait for upload to YouTube
 -o fn        output combined file to fn
 -p pfx       use pfx as prefix for file names (default: GX)
 -s w:h       scale video to w width and h height pixels
@@ -38,7 +39,7 @@ debug() {
     fi
 }
 
-while getopts ":hdfo:p:s:t:" FLAG; do
+while getopts ":hdfno:p:s:t:" FLAG; do
     case "${FLAG}" in
         d)
             DEBUG='true'
@@ -50,6 +51,12 @@ while getopts ":hdfo:p:s:t:" FLAG; do
             OVERWRITE_OPTION='-y'
 
             debug "Force overwrite mode turned on."
+            ;;
+        
+        n)
+            NO_WAIT=true
+
+            debug "No YouTube wait mode turned on."
             ;;
 
         o)
@@ -138,32 +145,71 @@ cleanup() {
     rm "${INPUT_FILE}"
 }
 
-waitForUpload() {
-    echo "Please upload the video to YouTube and then type CTRL+C once it has completed."
+buildInputFile() {
+    INPUT_FILE=$(mktemp)
 
-    caffeinate
+    debug "Building input file '${INPUT_FILE}'."
+
+    GOPRO_VIDEO_ID_FORMAT='%04d'
+
+    # for each video ID listed on command line
+    for VIDEO_ID in $*; do
+        # format it as a four-digit number
+        FORMATTED_VIDEO_ID=$(printf "${GOPRO_VIDEO_ID_FORMAT}" ${VIDEO_ID})
+
+        debug "Checking video ID '${FORMATTED_VIDEO_ID}'."
+
+        # if any files exist for formatted video ID
+        for GOPRO_FILE in ${FILE_PREFIX}??${FORMATTED_VIDEO_ID}.${FILE_TYPE}; do
+            FULL_FILE_NAME=$(realpath ${GOPRO_FILE})
+
+            debug "Adding file '${FULL_FILE_NAME}' to '${INPUT_FILE}'."
+
+            echo "file '${FULL_FILE_NAME}'" >> "${INPUT_FILE}"
+        done
+    done
+
+    if [[ ${DEBUG} == 'true' && -s ${INPUT_FILE} ]]; then
+        debug "=== Contents of '${INPUT_FILE}' ==="
+
+        cat "${INPUT_FILE}"
+
+        debug "=== End contents of '${INPUT_FILE}' ==="
+    fi
 }
 
-INPUT_FILE=$(mktemp)
+combineVideo() {
+    debug "Combining video into '${OUTPUT_FILE}'."
 
-GOPRO_VIDEO_ID_FORMAT='%04d'
+    debug << EOT
+Running FFmpeg (in: ${INPUT_FILE}, out: ${OUTPUT_FILE},
+  scaling: ${SCALING}, overwrite: ${OVERWRITE_OPTION}).
+EOT
 
-# for each video ID listed on command line
-for VIDEO_ID in $*; do
-    # format it as a four-digit number
-    FORMATTED_VIDEO_ID=$(printf "${GOPRO_VIDEO_ID_FORMAT}" ${VIDEO_ID})
+    caffeinate ffmpeg \
+      -hide_banner \
+      -c copy \
+      -f concat \
+      -safe 0 \
+      -i "${INPUT_FILE}" \
+      -vf scale=${SCALING} \
+      ${OVERWRITE_OPTION} \
+      ${OUTPUT_FILE}
 
-    debug "Checking video ID '${FORMATTED_VIDEO_ID}'."
+    cleanup
 
-    # if any files exist for formatted video ID
-    for GOPRO_FILE in ${FILE_PREFIX}??${FORMATTED_VIDEO_ID}.${FILE_TYPE}; do
-        FULL_FILE_NAME=$(realpath ${GOPRO_FILE})
+    echo "The videos have been combined into '${OUTPUT_FILE}'."
+}
 
-        debug "Adding file '${FULL_FILE_NAME}' to '${INPUT_FILE}'."
+waitForUpload() {
+    if [[ $NO_WAIT != 'true' ]]; then
+        echo "Please upload the video to YouTube and then type CTRL+C once it has completed."
 
-        echo "file '${FULL_FILE_NAME}'" >> "${INPUT_FILE}"
-    done
-done
+        caffeinate
+    fi
+}
+
+buildInputFile
 
 if [[ ! -s ${INPUT_FILE} ]]; then
     echo "No files to process. Exiting."
@@ -173,31 +219,6 @@ if [[ ! -s ${INPUT_FILE} ]]; then
     exit
 fi
 
-if [[ ${DEBUG} == 'true' ]]; then
-    debug "=== Contents of '${INPUT_FILE}' ==="
-
-    cat "${INPUT_FILE}"
-
-    debug "=== End contents of '${INPUT_FILE}' ==="
-fi
-
-debug << EOT
-Running FFmpeg (in: ${INPUT_FILE}, out: ${OUTPUT_FILE},
-  scaling: ${SCALING}, overwrite: ${OVERWRITE_OPTION}).
-EOT
-
-caffeinate ffmpeg \
-  -hide_banner \
-  -c copy \
-  -f concat \
-  -safe 0 \
-  -i "${INPUT_FILE}" \
-  -vf scale=${SCALING} \
-  ${OVERWRITE_OPTION} \
-  ${OUTPUT_FILE}
-
-cleanup
-
-echo "The videos have been combined into '${OUTPUT_FILE}'."
+combineVideo
 
 waitForUpload
