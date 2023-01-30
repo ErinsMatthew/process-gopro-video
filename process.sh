@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# process.sh -d -s 2560:1440 -o output.mp4 group1 group2 ...
+# process.sh -d -s 2560:1440 -o output.mp4 10 20 30
+
+# https://community.gopro.com/s/article/GoPro-Camera-File-Naming-Convention?language=en_US
 
 #
 #  nullglob - If set, Bash allows filename patterns which
@@ -11,7 +13,7 @@ shopt -s nullglob
 
 usage() {
     cat << EOT 1>&2
-Usage: process.sh [-h] [-d] [-f] [-p pfx] [-t type] -s w:h -o fn group ...
+Usage: process.sh [-h] [-d] [-f] [-p pfx] [-t type] -s w:h -o fn video ...
 
 -d           output debug information
 -f           overwrite output file if it already exists
@@ -21,7 +23,7 @@ Usage: process.sh [-h] [-d] [-f] [-p pfx] [-t type] -s w:h -o fn group ...
 -s w:h       scale video to w width and h height pixels
 -t type      use type as extension for file names (default: MP4)
 
-group ...    name of one or more groups to look for
+video ...    number of one or more videos to look for
 
 EOT
 
@@ -39,13 +41,13 @@ debug() {
 while getopts ":hdfo:p:s:t:" FLAG; do
     case "${FLAG}" in
         d)
-            DEBUG=true
+            DEBUG='true'
 
             debug "Debug mode turned on."
             ;;
 
         f)
-            FORCE_OVERWRITE=true
+            OVERWRITE_OPTION='-y'
 
             debug "Force overwrite mode turned on."
             ;;
@@ -86,7 +88,7 @@ while getopts ":hdfo:p:s:t:" FLAG; do
     esac
 done
 
-shift $((OPTIND-1))
+shift $(( OPTIND - 1 ))
 
 if [[ -z ${SCALING} ]] || [[ -z ${OUTPUT_FILE} ]]; then
     debug "Missing scaling and/or output file name."
@@ -95,12 +97,22 @@ if [[ -z ${SCALING} ]] || [[ -z ${OUTPUT_FILE} ]]; then
 fi
 
 setDefaults() {
+    if [[ -z ${OVERWRITE_OPTION} ]]; then
+        OVERWRITE_OPTION='-n'
+
+        debug "Overwrite option set to default of '${OVERWRITE_OPTION}'."
+    fi
+
     if [[ -z ${FILE_PREFIX} ]]; then
         FILE_PREFIX='GX'
+
+        debug "File prefix set to default of '${FILE_PREFIX}'"
     fi
 
     if [[ -z ${FILE_TYPE} ]]; then
         FILE_TYPE='MP4'
+
+        debug "File type set to default of '${FILE_TYPE}'."
     fi
 }
 
@@ -133,21 +145,23 @@ waitForUpload() {
 }
 
 INPUT_FILE=$(mktemp)
-GOPRO_GROUP_FORMAT='%04d'
 
-# for each group listed on command line
-for GROUP_ID in $*; do
-    GROUP=$(printf "${GOPRO_GROUP_FORMAT}" ${GROUP_ID})
+GOPRO_VIDEO_ID_FORMAT='%04d'
 
-    debug "Checking group '${GROUP}'."
+# for each video ID listed on command line
+for VIDEO_ID in $*; do
+    # format it as a four-digit number
+    FORMATTED_VIDEO_ID=$(printf "${GOPRO_VIDEO_ID_FORMAT}" ${VIDEO_ID})
 
-    # if any files exist for said group
-    for GOPRO_FILE in ${FILE_PREFIX}??${GROUP}.${FILE_TYPE}; do
-        FULL_PATH=$(realpath ${GOPRO_FILE})
+    debug "Checking video ID '${FORMATTED_VIDEO_ID}'."
 
-        debug "Adding file '${FULL_PATH}' to '${INPUT_FILE}'."
+    # if any files exist for formatted video ID
+    for GOPRO_FILE in ${FILE_PREFIX}??${FORMATTED_VIDEO_ID}.${FILE_TYPE}; do
+        FULL_FILE_NAME=$(realpath ${GOPRO_FILE})
 
-        echo "file '${FULL_PATH}'" >> "${INPUT_FILE}"
+        debug "Adding file '${FULL_FILE_NAME}' to '${INPUT_FILE}'."
+
+        echo "file '${FULL_FILE_NAME}'" >> "${INPUT_FILE}"
     done
 done
 
@@ -167,7 +181,10 @@ if [[ ${DEBUG} == 'true' ]]; then
     debug "=== End contents of '${INPUT_FILE}' ==="
 fi
 
-debug "Running FFmpeg (in: ${INPUT_FILE}, out: ${OUTPUT_FILE}, scaling: ${SCALING})."
+debug << EOT
+Running FFmpeg (in: ${INPUT_FILE}, out: ${OUTPUT_FILE},
+  scaling: ${SCALING}, overwrite: ${OVERWRITE_OPTION}).
+EOT
 
 caffeinate ffmpeg \
   -hide_banner \
@@ -176,6 +193,7 @@ caffeinate ffmpeg \
   -safe 0 \
   -i "${INPUT_FILE}" \
   -vf scale=${SCALING} \
+  ${OVERWRITE_OPTION} \
   ${OUTPUT_FILE}
 
 cleanup
