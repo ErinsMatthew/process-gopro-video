@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# process.sh -d -s 2560:1440 -o output.mp4 10 20 30
-
 # https://community.gopro.com/s/article/GoPro-Camera-File-Naming-Convention?language=en_US
 
 #
@@ -13,18 +11,31 @@ shopt -s nullglob
 
 usage() {
     cat << EOT 1>&2
-Usage: process.sh [-h] [-d] [-f] [-n] [-p pfx] [-t type] -s w:h -o fn video ...
+Usage: process.sh [-h] [-d] [-f] [-n] [-p pfx] [-t type] -s w:h -o fn { -i fn | video ... }
 
+OPTIONS
+=======
 -d           output debug information
 -f           overwrite output file if it already exists
 -h           show help
 -n           don't wait for upload to YouTube
+-i fn        input file to use when calling ffmpeg
 -o fn        output combined file to fn
 -p pfx       use pfx as prefix for file names (default: GX)
 -s w:h       scale video to w width and h height pixels
 -t type      use type as extension for file names (default: MP4)
 
+ARGUMENTS
+=========
 video ...    number of one or more videos to look for
+
+EXAMPLES
+========
+# build ffmpeg input file from video IDs 10, 20, and 30
+$ process.sh -d -s 2560:1440 -o output.mp4 10 20 30
+
+# read ffmpeg input file from file instead of building via command line
+$ process.sh -d -s 2560:1440 -i input.txt -o output.mp4
 
 EOT
 
@@ -39,7 +50,7 @@ debug() {
     fi
 }
 
-while getopts ":hdfno:p:s:t:" FLAG; do
+while getopts ":hdfni:o:p:s:t:" FLAG; do
     case "${FLAG}" in
         d)
             DEBUG='true'
@@ -52,9 +63,21 @@ while getopts ":hdfno:p:s:t:" FLAG; do
 
             debug "Force overwrite mode turned on."
             ;;
+
+        i)
+            INPUT_FILE=${OPTARG}
+
+            debug "Input file set to '${INPUT_FILE}'."
+
+            if [[ -s ${INPUT_FILE} ]]; then
+                CUSTOM_INPUT_FILE='true'
+
+                debug "Custom input file mode turned on."
+            fi
+            ;;
         
         n)
-            NO_WAIT=true
+            NO_WAIT='true'
 
             debug "No YouTube wait mode turned on."
             ;;
@@ -127,10 +150,10 @@ setDefaults
 
 dependencyCheck() {
     for d in caffeinate cat ffmpeg mktemp realpath; do
-        debug "Checking for dependency '$d'."
+        debug "Checking for dependency '${d}'."
 
-        if ! command -v $d &> /dev/null; then
-            echo "Dependency '$d' is missing."
+        if ! command -v ${d} &> /dev/null; then
+            echo "Dependency '${d}' is missing."
 
             exit
         fi
@@ -140,9 +163,11 @@ dependencyCheck() {
 dependencyCheck
 
 cleanup() {
-    debug "Deleting temp file '${INPUT_FILE}'."
+    if [[ ${CUSTOM_INPUT_FILE} != 'true' ]]; then
+        debug "Deleting temp file '${INPUT_FILE}'."
 
-    rm "${INPUT_FILE}"
+        rm "${INPUT_FILE}"
+    fi
 }
 
 buildInputFile() {
@@ -168,7 +193,9 @@ buildInputFile() {
             echo "file '${FULL_FILE_NAME}'" >> "${INPUT_FILE}"
         done
     done
+}
 
+showInputFile() {
     if [[ ${DEBUG} == 'true' && -s ${INPUT_FILE} ]]; then
         debug "=== Contents of '${INPUT_FILE}' ==="
 
@@ -179,6 +206,14 @@ buildInputFile() {
 }
 
 combineVideo() {
+    if [[ ! -s ${INPUT_FILE} ]]; then
+        echo "No files to process. Exiting."
+
+        cleanup
+
+        exit
+    fi
+
     debug "Combining video into '${OUTPUT_FILE}'."
 
     debug << EOT
@@ -202,22 +237,18 @@ EOT
 }
 
 waitForUpload() {
-    if [[ $NO_WAIT != 'true' ]]; then
+    if [[ ${NO_WAIT} != 'true' ]]; then
         echo "Please upload the video to YouTube and then type CTRL+C once it has completed."
 
         caffeinate
     fi
 }
 
-buildInputFile
-
-if [[ ! -s ${INPUT_FILE} ]]; then
-    echo "No files to process. Exiting."
-
-    cleanup
-
-    exit
+if [[ ${CUSTOM_INPUT_FILE} != 'true' ]]; then
+    buildInputFile
 fi
+
+showInputFile
 
 combineVideo
 
