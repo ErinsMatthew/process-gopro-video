@@ -79,7 +79,7 @@ while getopts ":hdfni:o:p:s:t:" FLAG; do
         n)
             NO_WAIT='true'
 
-            debug "No YouTube wait mode turned on."
+            debug "No wait mode turned on."
             ;;
 
         o)
@@ -205,9 +205,9 @@ showInputFile() {
     fi
 }
 
-combineVideo() {
+combineVideos() {
     if [[ ! -s ${INPUT_FILE} ]]; then
-        echo "No files to process. Exiting."
+        echo "No files to process. Exiting." > /dev/stderr
 
         cleanup
 
@@ -250,6 +250,6 @@ fi
 
 showInputFile
 
-combineVideo
+combineVideos
 
 waitForUpload
