@@ -153,7 +153,7 @@ dependencyCheck() {
         debug "Checking for dependency '${d}'."
 
         if ! command -v ${d} &> /dev/null; then
-            echo "Dependency '${d}' is missing."
+            echo "Dependency '${d}' is missing." > /dev/stderr
 
             exit
         fi
