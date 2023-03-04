@@ -1,7 +1,9 @@
 # process-gopro-video
+
 Combine and process GoPro videos so they can be uploaded to YouTube.
 
 ## Overview
+
 This script will combine multiple video files from a GoPro camera
 into one video file that can then be uploaded to YouTube and other
 locations.
@@ -18,6 +20,7 @@ in a custom input file via `-i` and it will be passed onto ffmpeg.
 The custom input file should be in the format described [here](https://superuser.com/questions/1264399/can-ffmpeg-read-the-input-from-a-text-file#1264453).
 
 ## Execution
+
 To execute this script, run the following commands once the
 dependencies are installed:
 
@@ -30,13 +33,15 @@ $ process.sh -d -s 2560:1440 -i input.txt -o output.mp4
 ```
 
 ## Dependencies
-- caffeinate - pre-installed with macOS
-- cat - pre-installed with macOS and most Linux distributions
-- ffmpeg - install using [Homebrew](https://formulae.brew.sh/formula/ffmpeg), another package manager or [manually](https://ffmpeg.org/).
-- mktemp - pre-installed with macOS
-- realpath - install via coreutils using [Homebrew](https://formulae.brew.sh/formula/coreutils), another package manager or [manually](https://www.gnu.org/software/coreutils/).
+
+- `caffeinate` - pre-installed with macOS
+- `cat` - pre-installed with macOS and most Linux distributions
+- `ffmpeg` - install using [Homebrew](https://formulae.brew.sh/formula/ffmpeg), another package manager, or [manually](https://ffmpeg.org/).
+- `mktemp` - pre-installed with macOS
+- `realpath` - install via coreutils using [Homebrew](https://formulae.brew.sh/formula/coreutils), another package manager, or [manually](https://www.gnu.org/software/coreutils/).
 
 ## Platform Support
+
 This script was tested on macOS Monterey (12.6) using GNU Bash 5.2.15,
 but should work on any GNU/Linux system that supports the dependencies
 above.
