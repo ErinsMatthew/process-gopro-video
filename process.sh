@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -o nounset
 
 # https://community.gopro.com/s/article/GoPro-Camera-File-Naming-Convention?language=en_US
 
@@ -42,171 +44,208 @@ EOT
     exit
 }
 
-[[ $# -eq 0 ]] && usage
+initGlobals() {
+    declare -gA GLOBALS=(
+        [CUSTOM_INPUT_FILE]=''          # -i
+        [DEBUG]='false'                 # -d
+        [FILE_PREFIX]=''                # -p
+        [FILE_TYPE]=''                  # -t
+        [INPUT_FILE]=''                 # -i
+        [NO_WAIT]='false'               # -n
+        [OUTPUT_FILE]=''                # -o
+        [OVERWRITE_OPTION]=''           # -f
+        [SCALING]=''                    # -s
+    )
+}
 
 debug() {
-    if [[ ${DEBUG} == 'true' ]]; then
-        echo $*
+    if [[ ${GLOBALS[DEBUG]} == 'true' ]]; then
+        echo "$@"
     fi
 }
 
-while getopts ":hdfni:o:p:s:t:" FLAG; do
-    case "${FLAG}" in
-        d)
-            DEBUG='true'
+processOptions() {
+    [[ $# -eq 0 ]] && usage
 
-            debug "Debug mode turned on."
-            ;;
+    while getopts ":hdfni:o:p:s:t:" FLAG; do
+        case "${FLAG}" in
+            d)
+                GLOBALS[DEBUG]='true'
 
-        f)
-            OVERWRITE_OPTION='-y'
+                debug "Debug mode turned on."
+                ;;
 
-            debug "Force overwrite mode turned on."
-            ;;
+            f)
+                GLOBALS[OVERWRITE_OPTION]='-y'
 
-        i)
-            INPUT_FILE=${OPTARG}
+                debug "Force overwrite mode turned on."
+                ;;
 
-            debug "Input file set to '${INPUT_FILE}'."
+            i)
+                GLOBALS[INPUT_FILE]=${OPTARG}
 
-            if [[ -s ${INPUT_FILE} ]]; then
-                CUSTOM_INPUT_FILE='true'
+                debug "Input file set to '${GLOBALS[INPUT_FILE]}'."
 
-                debug "Custom input file mode turned on."
-            fi
-            ;;
-        
-        n)
-            NO_WAIT='true'
+                if [[ -s ${GLOBALS[INPUT_FILE]} ]]; then
+                    GLOBALS[CUSTOM_INPUT_FILE]='true'
 
-            debug "No wait mode turned on."
-            ;;
+                    debug "Custom input file mode turned on."
+                fi
+                ;;
 
-        o)
-            OUTPUT_FILE=${OPTARG}
+            n)
+                GLOBALS[NO_WAIT]='true'
 
-            debug "Output file set to '${OUTPUT_FILE}'."
-            ;;
+                debug "No wait mode turned on."
+                ;;
 
-        p)
-            FILE_PREFIX=${OPTARG}
+            o)
+                GLOBALS[OUTPUT_FILE]=${OPTARG}
 
-            debug "File prefix set to '${FILE_PREFIX}'."
-            ;;
+                debug "Output file set to '${GLOBALS[OUTPUT_FILE]}'."
+                ;;
 
-        s)
-            SCALING=${OPTARG}
+            p)
+                GLOBALS[FILE_PREFIX]=${OPTARG}
 
-            if [[ ${SCALING} =~ [0-9]+:[0-9]+ ]]; then
-                debug "Scaling set to '${SCALING}'."
-            else
-                debug "Invalid scaling: '${SCALING}'."
+                debug "File prefix set to '${GLOBALS[FILE_PREFIX]}'."
+                ;;
 
+            s)
+                GLOBALS[SCALING]=${OPTARG}
+
+                if [[ ${GLOBALS[SCALING]} =~ [0-9]+:[0-9]+ ]]; then
+                    debug "Scaling set to '${GLOBALS[SCALING]}'."
+                else
+                    debug "Invalid scaling: '${GLOBALS[SCALING]}'."
+
+                    usage
+                fi
+                ;;
+
+            t)
+                GLOBALS[FILE_TYPE]=${OPTARG}
+
+                debug "File type set to '${GLOBALS[FILE_TYPE]}'."
+                ;;
+
+            h | *)
                 usage
-            fi
-            ;;
+                ;;
+        esac
+    done
 
-        t)
-            FILE_TYPE=${OPTARG}
+    shift $(( OPTIND - 1 ))
 
-            debug "File type set to '${FILE_TYPE}'."
-            ;;
+    [[ $# -eq 0 ]] && usage
+}
 
-        h | *)
-            usage
-            ;;
-    esac
-done
+validateInputs() {
+    if [[ -z ${GLOBALS[SCALING]} ]] || [[ -z ${GLOBALS[OUTPUT_FILE]} ]]; then
+        debug "Missing scaling and/or output file name."
 
-shift $(( OPTIND - 1 ))
-
-if [[ -z ${SCALING} ]] || [[ -z ${OUTPUT_FILE} ]]; then
-    debug "Missing scaling and/or output file name."
-
-    usage
-fi
+        usage
+    fi
+}
 
 setDefaults() {
-    if [[ -z ${OVERWRITE_OPTION} ]]; then
-        OVERWRITE_OPTION='-n'
+    if [[ -z ${GLOBALS[OVERWRITE_OPTION]} ]]; then
+        GLOBALS[OVERWRITE_OPTION]='-n'
 
-        debug "Overwrite option set to default of '${OVERWRITE_OPTION}'."
+        debug "Overwrite option set to default of '${GLOBALS[OVERWRITE_OPTION]}'."
     fi
 
-    if [[ -z ${FILE_PREFIX} ]]; then
-        FILE_PREFIX='GX'
+    if [[ -z ${GLOBALS[FILE_PREFIX]} ]]; then
+        GLOBALS[FILE_PREFIX]='GX'
 
-        debug "File prefix set to default of '${FILE_PREFIX}'"
+        debug "File prefix set to default of '${GLOBALS[FILE_PREFIX]}'"
     fi
 
-    if [[ -z ${FILE_TYPE} ]]; then
-        FILE_TYPE='MP4'
+    if [[ -z ${GLOBALS[FILE_TYPE]} ]]; then
+        GLOBALS[FILE_TYPE]='MP4'
 
-        debug "File type set to default of '${FILE_TYPE}'."
+        debug "File type set to default of '${GLOBALS[FILE_TYPE]}'."
     fi
 }
 
-setDefaults
+checkForDependency() {
+    debug "Checking for dependency '$1'."
+
+    if ! command -v "$1" &> /dev/null; then
+        echo "Dependency '$1' is missing." > /dev/stderr
+
+        exit
+    fi
+}
 
 dependencyCheck() {
-    for d in caffeinate cat ffmpeg mktemp realpath; do
-        debug "Checking for dependency '${d}'."
+    local DEPENDENCY
 
-        if ! command -v ${d} &> /dev/null; then
-            echo "Dependency '${d}' is missing." > /dev/stderr
-
-            exit
-        fi
+    for DEPENDENCY in caffeinate cat ffmpeg mktemp realpath; do
+        checkForDependency "${DEPENDENCY}"
     done
 }
 
-dependencyCheck
-
 cleanup() {
-    if [[ ${CUSTOM_INPUT_FILE} != 'true' ]]; then
-        debug "Deleting temp file '${INPUT_FILE}'."
+    if [[ ${GLOBALS[CUSTOM_INPUT_FILE]} != 'true' ]]; then
+        debug "Deleting temp file '${GLOBALS[INPUT_FILE]}'."
 
-        rm "${INPUT_FILE}"
+        rm "${GLOBALS[INPUT_FILE]}"
     fi
 }
 
+performSetup() {
+    initGlobals
+
+    processOptions "$@"
+
+    validateInputs
+
+    setDefaults
+
+    dependencyCheck
+}
+
 buildInputFile() {
-    INPUT_FILE=$(mktemp)
+    local VIDEO_ID
+    local FORMATTED_VIDEO_ID
+    local GOPRO_FILE
+    local FULL_FILE_NAME
 
-    debug "Building input file '${INPUT_FILE}'."
+    GLOBALS[INPUT_FILE]=$(mktemp)
 
-    GOPRO_VIDEO_ID_FORMAT='%04d'
+    debug "Building input file '${GLOBALS[INPUT_FILE]}'."
 
     # for each video ID listed on command line
-    for VIDEO_ID in $*; do
+    for VIDEO_ID in "$@"; do
         # format it as a four-digit number
-        FORMATTED_VIDEO_ID=$(printf "${GOPRO_VIDEO_ID_FORMAT}" ${VIDEO_ID})
+        printf -v FORMATTED_VIDEO_ID '%04d' "${VIDEO_ID}"
 
         debug "Checking video ID '${FORMATTED_VIDEO_ID}'."
 
         # if any files exist for formatted video ID
-        for GOPRO_FILE in ${FILE_PREFIX}??${FORMATTED_VIDEO_ID}.${FILE_TYPE}; do
-            FULL_FILE_NAME=$(realpath ${GOPRO_FILE})
+        for GOPRO_FILE in "${GLOBALS[FILE_PREFIX]}"??"${FORMATTED_VIDEO_ID}"."${GLOBALS[FILE_TYPE]}"; do
+            FULL_FILE_NAME=$(realpath "${GOPRO_FILE}")
 
-            debug "Adding file '${FULL_FILE_NAME}' to '${INPUT_FILE}'."
+            debug "Adding file '${FULL_FILE_NAME}' to '${GLOBALS[INPUT_FILE]}'."
 
-            echo "file '${FULL_FILE_NAME}'" >> "${INPUT_FILE}"
+            echo "file '${FULL_FILE_NAME}'" >> "${GLOBALS[INPUT_FILE]}"
         done
     done
 }
 
 showInputFile() {
-    if [[ ${DEBUG} == 'true' && -s ${INPUT_FILE} ]]; then
-        debug "=== Contents of '${INPUT_FILE}' ==="
+    if [[ ${GLOBALS[DEBUG]} == 'true' && -s ${GLOBALS[INPUT_FILE]} ]]; then
+        debug "=== Contents of '${GLOBALS[INPUT_FILE]}' ==="
 
-        cat "${INPUT_FILE}"
+        cat "${GLOBALS[INPUT_FILE]}"
 
-        debug "=== End contents of '${INPUT_FILE}' ==="
+        debug "=== End contents of '${GLOBALS[INPUT_FILE]}' ==="
     fi
 }
 
 combineVideos() {
-    if [[ ! -s ${INPUT_FILE} ]]; then
+    if [[ ! -s ${GLOBALS[INPUT_FILE]} ]]; then
         echo "No files to process. Exiting." > /dev/stderr
 
         cleanup
@@ -214,11 +253,11 @@ combineVideos() {
         exit
     fi
 
-    debug "Combining video into '${OUTPUT_FILE}'."
+    debug "Combining video into '${GLOBALS[OUTPUT_FILE]}'."
 
     debug << EOT
-Running FFmpeg (in: ${INPUT_FILE}, out: ${OUTPUT_FILE},
-  scaling: ${SCALING}, overwrite: ${OVERWRITE_OPTION}).
+Running FFmpeg (in: ${GLOBALS[INPUT_FILE]}, out: ${GLOBALS[OUTPUT_FILE]},
+  scaling: ${GLOBALS[SCALING]}, overwrite: ${GLOBALS[OVERWRITE_OPTION]}).
 EOT
 
     caffeinate ffmpeg \
@@ -226,26 +265,28 @@ EOT
       -c copy \
       -f concat \
       -safe 0 \
-      -i "${INPUT_FILE}" \
-      -vf scale=${SCALING} \
-      ${OVERWRITE_OPTION} \
-      ${OUTPUT_FILE}
+      -i "${GLOBALS[INPUT_FILE]}" \
+      -vf scale="${GLOBALS[SCALING]}" \
+      "${GLOBALS[OVERWRITE_OPTION]}" \
+      "${GLOBALS[OUTPUT_FILE]}"
 
     cleanup
 
-    echo "The videos have been combined into '${OUTPUT_FILE}'."
+    echo "The videos have been combined into '${GLOBALS[OUTPUT_FILE]}'."
 }
 
 waitForUpload() {
-    if [[ ${NO_WAIT} != 'true' ]]; then
+    if [[ ${GLOBALS[NO_WAIT]} != 'true' ]]; then
         echo "Please upload the video to YouTube and then type CTRL+C once it has completed."
 
         caffeinate
     fi
 }
 
-if [[ ${CUSTOM_INPUT_FILE} != 'true' ]]; then
-    buildInputFile
+performSetup "$@"
+
+if [[ ${GLOBALS[CUSTOM_INPUT_FILE]} != 'true' ]]; then
+    buildInputFile "$@"
 fi
 
 showInputFile
