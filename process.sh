@@ -55,6 +55,8 @@ initGlobals() {
         [OUTPUT_FILE]=''                # -o
         [OVERWRITE_OPTION]=''           # -f
         [SCALING]=''                    # -s
+
+        [VIDEO_IDS]=''                  # video ...
     )
 }
 
@@ -137,6 +139,8 @@ processOptions() {
 
     shift $(( OPTIND - 1 ))
 
+    GLOBALS[VIDEO_IDS]=$*
+
     [[ $# -eq 0 ]] && usage
 }
 
@@ -217,7 +221,7 @@ buildInputFile() {
     debug "Building input file '${GLOBALS[INPUT_FILE]}'."
 
     # for each video ID listed on command line
-    for VIDEO_ID in "$@"; do
+    for VIDEO_ID in ${GLOBALS[VIDEO_IDS]}; do
         # format it as a four-digit number
         printf -v FORMATTED_VIDEO_ID '%04d' "${VIDEO_ID}"
 
@@ -259,15 +263,15 @@ combineVideos() {
 Running FFmpeg (in: ${GLOBALS[INPUT_FILE]}, out: ${GLOBALS[OUTPUT_FILE]},
   scaling: ${GLOBALS[SCALING]}, overwrite: ${GLOBALS[OVERWRITE_OPTION]}).
 EOT
+#      -vf scale="${GLOBALS[SCALING]}" \
+#      "${GLOBALS[OVERWRITE_OPTION]}" \
 
     caffeinate ffmpeg \
       -hide_banner \
-      -c copy \
       -f concat \
       -safe 0 \
       -i "${GLOBALS[INPUT_FILE]}" \
-      -vf scale="${GLOBALS[SCALING]}" \
-      "${GLOBALS[OVERWRITE_OPTION]}" \
+      -c copy \
       "${GLOBALS[OUTPUT_FILE]}"
 
     cleanup
