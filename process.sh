@@ -263,15 +263,19 @@ combineVideos() {
 Running FFmpeg (in: ${GLOBALS[INPUT_FILE]}, out: ${GLOBALS[OUTPUT_FILE]},
   scaling: ${GLOBALS[SCALING]}, overwrite: ${GLOBALS[OVERWRITE_OPTION]}).
 EOT
-#      -vf scale="${GLOBALS[SCALING]}" \
-#      "${GLOBALS[OVERWRITE_OPTION]}" \
+
+    # https://ffmpeg.org/ffmpeg.html
+    # https://support.google.com/youtube/answer/6039860?hl=en
 
     caffeinate ffmpeg \
       -hide_banner \
+      "${GLOBALS[OVERWRITE_OPTION]}" \
       -f concat \
       -safe 0 \
       -i "${GLOBALS[INPUT_FILE]}" \
-      -c copy \
+      -c:a flac \
+      -c:v h264 \
+      -filter:v scale=hd1080 \
       "${GLOBALS[OUTPUT_FILE]}"
 
     cleanup
